@@ -95,7 +95,7 @@ button:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
 .tabs button{flex:1;padding:8px 4px;border-radius:14px;font-weight:700;font-size:12px;color:var(--mute);display:flex;flex-direction:column;align-items:center;gap:2px}
 .tabs button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .tabs button.on{color:var(--hot);background:rgba(255,61,127,.1)}
-.toast{position:absolute;left:16px;right:16px;bottom:84px;background:var(--hot);color:#fff;padding:12px 14px;border-radius:14px;font-weight:700;text-align:center;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none}
+.toast{z-index:30;position:absolute;left:16px;right:16px;bottom:84px;background:var(--hot);color:#fff;padding:12px 14px;border-radius:14px;font-weight:700;text-align:center;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none}
 .toast.show{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 .auth{position:absolute;inset:0;z-index:20;background:var(--bg);padding:28px;display:none;flex-direction:column;justify-content:center;gap:12px}
@@ -114,6 +114,7 @@ button:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
 .need b{font-size:42px;font-weight:800;color:var(--hot)}.need .grid{display:flex;gap:8px;justify-content:center;margin:14px 0}
 .need .grid span{background:var(--bg);border-radius:12px;padding:8px 12px;font-weight:700;font-size:13px}
 .save{margin-top:10px}
+.amsg{min-height:22px;margin:0;color:var(--hot);font-weight:700;font-size:14px;text-align:center}
 .link{color:var(--mute);font-size:13px;text-align:center;display:block;margin:12px auto 0}
 </style>
 </head>
@@ -143,14 +144,14 @@ const TXT={
   hint:"Tap a player, then another to swap",cap:"Make captain",vice:"Make vice",search:"Search players",all:"All",GK:"GK",DEF:"DEF",MID:"MID",FWD:"FWD",
   d:"days",h:"hrs",m:"min",s:"sec",bad:"Invalid formation: 1 GK, 3-5 DEF, 2-5 MID, 1-3 FWD",save:"Save squad",saved:"Squad saved",need15:"Pick 15 players first",
   needCap:"Choose a captain and a vice-captain",locked:"Deadline passed, squad locked",email:"Email",pass:"Password",signin:"Sign in",signup:"Create account",
-  confirm:"Check your email to confirm, then sign in",logout:"Log out",add:"Add",rm:"Remove",errPos:"No room left in this position",errClub:"Max 3 players per club",
+  confirm:"Check your email to confirm, then sign in",logout:"Log out",authInput:"Enter a valid email and a password of at least 6 characters",add:"Add",rm:"Remove",errPos:"No room left in this position",errClub:"Max 3 players per club",
   errBudget:"Not enough budget",full:"Squad is full (15)",build:"Build your squad from the Players tab",load:"Loading...",none:"No players yet. Run the data sync first.",
   noBoard:"No saved squads yet",cset:"Captain set",vset:"Vice set",goPlayers:"Pick players",you:"You"},
  ar:{logo:"فانتازي <i>EPL</i>",gw:"الموعد النهائي القادم",pts:"النقاط",cnt:"اللاعبون",bank:"الرصيد",squad:"التشكيلة",players:"اللاعبون",league:"الدوري",bench:"الاحتياطي",
   hint:"اضغط لاعب ثم لاعب آخر للتبديل",cap:"اجعله كابتن",vice:"اجعله نائب",search:"ابحث عن لاعب",all:"الكل",GK:"حارس",DEF:"مدافع",MID:"وسط",FWD:"مهاجم",
   d:"يوم",h:"ساعة",m:"دقيقة",s:"ثانية",bad:"تشكيل غير صالح: حارس، 3-5 مدافعين، 2-5 وسط، 1-3 مهاجمين",save:"حفظ الفريق",saved:"تم حفظ الفريق",need15:"اختر 15 لاعباً أولاً",
   needCap:"اختر كابتن ونائب كابتن",locked:"انتهى الموعد النهائي، الفريق مقفول",email:"البريد الإلكتروني",pass:"كلمة المرور",signin:"تسجيل الدخول",signup:"إنشاء حساب",
-  confirm:"افتح بريدك للتأكيد ثم سجّل الدخول",logout:"تسجيل الخروج",add:"إضافة",rm:"حذف",errPos:"لا يوجد مكان لهذا المركز",errClub:"الحد الأقصى 3 لاعبين من النادي",
+  confirm:"افتح بريدك للتأكيد ثم سجّل الدخول",logout:"تسجيل الخروج",authInput:"اكتب بريداً صحيحاً وكلمة مرور من 6 أحرف على الأقل",add:"إضافة",rm:"حذف",errPos:"لا يوجد مكان لهذا المركز",errClub:"الحد الأقصى 3 لاعبين من النادي",
   errBudget:"الميزانية لا تكفي",full:"الفريق مكتمل (15)",build:"كوّن فريقك من تبويب اللاعبون",load:"جاري التحميل...",none:"لا يوجد لاعبون بعد. شغّل مزامنة البيانات أولاً.",
   noBoard:"لا توجد فرق محفوظة بعد",cset:"تم تعيين الكابتن",vset:"تم تعيين النائب",goPlayers:"اختر اللاعبين",you:"أنت"}
 };
@@ -174,7 +175,7 @@ function chrome(){
  $("stats").innerHTML=`<div><b>${pts}</b><span>${t("pts")}</span></div><div><b>${list.length}/15</b><span>${t("cnt")}</span></div><div><b>£${(100-sum(list,p=>p.pr)).toFixed(1)}m</b><span>${t("bank")}</span></div>`;
  const ic={squad:'<path d="M3 5h18v14H3zM12 5v14M3 12h18"/>',players:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',league:'<path d="M7 4h10v5a5 5 0 0 1-10 0zM5 5H3v2a3 3 0 0 0 3 3M19 5h2v2a3 3 0 0 1-3 3M12 14v4M8 21h8"/>'};
  $("tabs").innerHTML=["squad","players","league"].map(k=>`<button data-tab="${k}" class="${tab===k?"on":""}"><svg viewBox="0 0 24 24">${ic[k]}</svg>${t(k)}</button>`).join("");
- $("auth").innerHTML=`<h1>${t("logo")}</h1><input class="search" id="em" type="email" autocomplete="email" placeholder="${t("email")}"><input class="search" id="pw" type="password" autocomplete="current-password" placeholder="${t("pass")}"><button class="btn" data-auth="in">${t("signin")}</button><button class="btn alt" data-auth="up">${t("signup")}</button><button class="link" id="lang2">${lang==="ar"?"English":"العربية"}</button>`;
+ $("auth").innerHTML=`<h1>${t("logo")}</h1><input class="search" id="em" type="email" autocomplete="email" placeholder="${t("email")}"><input class="search" id="pw" type="password" autocomplete="current-password" placeholder="${t("pass")}"><button class="btn" data-auth="in">${t("signin")}</button><button class="btn alt" data-auth="up">${t("signup")}</button><p class="amsg" id="amsg"></p><button class="link" id="lang2">${lang==="ar"?"English":"العربية"}</button>`;
 }
 const chipEl=i=>{const p=list[i];return `<button class="pl ${sel===i?"sel":""}" data-i="${i}">${p.c?'<span class="badge">C</span>':p.v?'<span class="badge v">V</span>':""}${crest(p)}<span class="nm">${esc(p.n)}</span><span class="pt">${p.pts}</span></button>`};
 
@@ -244,10 +245,16 @@ async function loadBoard(){
 document.addEventListener("click",async e=>{
  const b=e.target.closest("button");if(!b)return;
  if(b.id==="lang"||b.id==="lang2"){lang=lang==="ar"?"en":"ar";try{localStorage.setItem("lang",lang)}catch(_){}return render()}
- if(b.dataset.auth){const email=$("em").value.trim(),password=$("pw").value;
-  const r=b.dataset.auth==="up"?await sb.auth.signUp({email,password,options:{data:{display_name:email.split("@")[0]}}}):await sb.auth.signInWithPassword({email,password});
-  if(r.error)return toast(r.error.message);
-  if(b.dataset.auth==="up"&&!r.data.session)toast(t("confirm"));return}
+ if(b.dataset.auth){const email=$("em").value.trim(),password=$("pw").value,am=$("amsg"),up=b.dataset.auth==="up";
+  if(!email||password.length<6){am.textContent=t("authInput");return}
+  am.textContent="...";b.disabled=true;
+  try{
+   const r=up?await sb.auth.signUp({email,password,options:{data:{display_name:email.split("@")[0]}}}):await sb.auth.signInWithPassword({email,password});
+   if(r.error)am.textContent=r.error.message;
+   else if(up&&!r.data.session)am.textContent=t("confirm");
+   else am.textContent="";
+  }catch(err){am.textContent=String(err&&err.message||err)}
+  b.disabled=false;return}
  if(b.dataset.out){await sb.auth.signOut();return}
  if(b.dataset.save)return save();
  if(b.dataset.tab){tab=b.dataset.tab;sel=null;render();if(tab==="league")loadBoard();return}
