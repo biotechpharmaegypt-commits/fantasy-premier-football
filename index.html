@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Fantasy EPL</title>
+<meta name="theme-color" content="#14123a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Cairo:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -36,7 +39,7 @@ button:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
 .count{display:flex;gap:6px;direction:ltr}
 .count div{background:rgba(255,255,255,.1);border-radius:10px;padding:6px 8px;min-width:44px;text-align:center;font-weight:800;font-size:18px;line-height:1.1}
 .count span{display:block;font-size:10px;font-weight:500;color:#b9b8e6}
-.stats{position:absolute;inset-inline:16px;bottom:-34px;background:var(--card);border-radius:20px;display:flex;box-shadow:0 12px 30px rgba(20,18,58,.25);overflow:hidden}
+.stats{color:var(--ink);position:absolute;inset-inline:16px;bottom:-34px;background:var(--card);border-radius:20px;display:flex;box-shadow:0 12px 30px rgba(20,18,58,.25);overflow:hidden}
 .stats div{flex:1;padding:12px 8px;text-align:center}
 .stats div+div{border-inline-start:1px solid var(--line)}
 .stats b{display:block;font-size:22px;font-weight:800;letter-spacing:-.5px}
@@ -115,6 +118,9 @@ button:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
 .need .grid span{background:var(--bg);border-radius:12px;padding:8px 12px;font-weight:700;font-size:13px}
 .save{margin-top:10px}
 .amsg{min-height:22px;margin:0;color:var(--hot);font-weight:700;font-size:14px;text-align:center}
+.live{display:inline-block;width:8px;height:8px;border-radius:50%;background:#14b87a;margin-inline-start:8px;vertical-align:middle;animation:pulse 1.8s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(20,184,122,.7)}70%{box-shadow:0 0 0 7px rgba(20,184,122,0)}100%{box-shadow:0 0 0 0 rgba(20,184,122,0)}}
+@media (prefers-reduced-motion:reduce){.live{animation:none}}
 .link{color:var(--mute);font-size:13px;text-align:center;display:block;margin:12px auto 0}
 </style>
 </head>
@@ -157,6 +163,7 @@ const TXT={
 };
 const $=id=>document.getElementById(id);
 let lang="ar",tab="squad",filt=0,q="",sel=null,all=[],list=[],user=null,gw=null,board=[],loaded=false;
+let squadId=null,dirty=false,live=false,rt=null,rtSquad=null,rsT,lbT;
 try{lang=localStorage.getItem("lang")||"ar"}catch(e){}
 const t=k=>TXT[lang][k], PK=["","GK","DEF","MID","FWD"], LIM={1:2,2:5,3:5,4:3};
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -170,7 +177,7 @@ const crest=(p,s)=>`<span class="cr ${s||""}">${esc(p.sn)}${p.code?`<img src="${
 
 function chrome(){
  document.documentElement.lang=lang;document.documentElement.dir=lang==="ar"?"rtl":"ltr";
- $("logo").innerHTML=t("logo");$("lang").textContent=lang==="ar"?"English":"العربية";$("gwl").textContent=t("gw");$("gwn").textContent=gw?gw.name:"—";
+ $("logo").innerHTML=t("logo")+(live?'<span class="live"></span>':"");$("lang").textContent=lang==="ar"?"English":"العربية";$("gwl").textContent=t("gw");$("gwn").textContent=gw?gw.name:"—";
  const pts=list.length===15?sum(list.slice(0,11),p=>p.pts*(p.c?2:1)):sum(list,p=>p.pts);
  $("stats").innerHTML=`<div><b>${pts}</b><span>${t("pts")}</span></div><div><b>${list.length}/15</b><span>${t("cnt")}</span></div><div><b>£${(100-sum(list,p=>p.pr)).toFixed(1)}m</b><span>${t("bank")}</span></div>`;
  const ic={squad:'<path d="M3 5h18v14H3zM12 5v14M3 12h18"/>',players:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',league:'<path d="M7 4h10v5a5 5 0 0 1-10 0zM5 5H3v2a3 3 0 0 0 3 3M19 5h2v2a3 3 0 0 1-3 3M12 14v4M8 21h8"/>'};
@@ -219,24 +226,59 @@ async function save(){
  if(locked())return toast(t("locked"));
  const {data:sq,error}=await sb.from("squads").upsert({user_id:user.id,name:"My Team",budget:+(100-sum(list,p=>p.pr)).toFixed(1)},{onConflict:"user_id"}).select("id").single();
  if(error)return toast(error.message);
+ squadId=sq.id;
  await sb.from("squad_players").delete().eq("squad_id",sq.id);
  const {error:e2}=await sb.from("squad_players").insert(list.map((p,i)=>({squad_id:sq.id,player_id:p.id,slot:i+1,is_captain:!!p.c,is_vice:!!p.v,purchase_price:p.pr})));
+ if(!e2){dirty=false;if(rtSquad!==squadId)subscribe()}
  toast(e2?e2.message:t("saved"));
+}
+const PSEL="id,web_name,position,price,total_points,team_id,teams(short_name,code)";
+async function loadSquad(){
+ const {data:sq}=await sb.from("squads").select("id").eq("user_id",user.id).maybeSingle();
+ if(!sq){squadId=null;return}
+ squadId=sq.id;
+ const {data}=await sb.from("squad_players").select(`slot,is_captain,is_vice,players(${PSEL})`).eq("squad_id",sq.id).order("slot");
+ list=(data||[]).map(r=>({...mk(r.players),c:r.is_captain?1:0,v:r.is_vice?1:0}));
+ if(list.length===15&&!ok(list))list=auto(list);
+ dirty=false;
+}
+async function fetchBase(){
+ const [pl,g]=await Promise.all([
+  sb.from("players").select(PSEL).order("total_points",{ascending:false}).limit(1000),
+  sb.from("gameweeks").select("name,deadline_time").eq("is_next",true).maybeSingle()]);
+ return {pl:pl.data,g:g.data};
 }
 async function boot(){
  loaded=false;render();
- const sel_="id,web_name,position,price,total_points,team_id,teams(short_name,code)";
- const [pl,g,sq]=await Promise.all([
-  sb.from("players").select(sel_).order("total_points",{ascending:false}).limit(1000),
-  sb.from("gameweeks").select("name,deadline_time").eq("is_next",true).maybeSingle(),
-  sb.from("squads").select("id").eq("user_id",user.id).maybeSingle()]);
- all=(pl.data||[]).map(mk);gw=g.data;list=[];
- if(sq.data){
-  const {data}=await sb.from("squad_players").select(`slot,is_captain,is_vice,players(${sel_})`).eq("squad_id",sq.data.id).order("slot");
-  list=(data||[]).map(r=>({...mk(r.players),c:r.is_captain?1:0,v:r.is_vice?1:0}));
-  if(list.length===15&&!ok(list))list=auto(list);
- }
- loaded=true;render();tick();
+ const {pl,g}=await fetchBase();
+ all=(pl||[]).map(mk);gw=g;list=[];
+ await loadSquad();
+ loaded=true;render();tick();subscribe();
+}
+// refresh prices/points/deadline without touching the user's lineup edits
+async function refreshData(){
+ if(!user||!loaded)return;
+ const {pl,g}=await fetchBase();
+ if(pl){all=pl.map(mk);const m=new Map(all.map(p=>[p.id,p]));list=list.map(p=>{const n=m.get(p.id);return n?{...n,c:p.c,v:p.v}:p})}
+ gw=g;
+ if(document.activeElement?.id!=="q")render();
+}
+function reloadSquad(){clearTimeout(rsT);rsT=setTimeout(async()=>{
+ if(dirty)return;
+ await loadSquad();render();
+ if(squadId&&rtSquad!==squadId)subscribe();
+},900)}
+function unsub(){if(rt){sb.removeChannel(rt);rt=null}rtSquad=null;live=false}
+// Realtime: my squad changes on another device + league standings
+function subscribe(){
+ unsub();rtSquad=squadId;
+ rt=sb.channel("fantasy-"+user.id)
+  .on("postgres_changes",{event:"*",schema:"public",table:"squads"},p=>{
+    const uid=(p.new&&p.new.user_id)||(p.old&&p.old.user_id);
+    if(uid===user.id)reloadSquad();
+    else if(tab==="league"){clearTimeout(lbT);lbT=setTimeout(loadBoard,600)}});
+ if(squadId)rt.on("postgres_changes",{event:"*",schema:"public",table:"squad_players",filter:"squad_id=eq."+squadId},()=>reloadSquad());
+ rt.subscribe(st=>{live=st==="SUBSCRIBED";chrome()});
 }
 async function loadBoard(){
  const {data}=await sb.from("squads").select("user_id,name,total_points,profiles(display_name)").order("total_points",{ascending:false}).limit(50);
@@ -259,20 +301,23 @@ document.addEventListener("click",async e=>{
  if(b.dataset.save)return save();
  if(b.dataset.tab){tab=b.dataset.tab;sel=null;render();if(tab==="league")loadBoard();return}
  if(b.dataset.f){filt=+b.dataset.f;return render()}
- if(b.dataset.p){togglePlayer(+b.dataset.p);return render()}
- if(b.dataset.a){if(locked())return toast(t("locked"));const k=b.dataset.a==="cap"?"c":"v",o=k==="c"?"v":"c";list=list.map((p,i)=>i===sel?{...p,[k]:1,[o]:0}:{...p,[k]:0});toast(t(k==="c"?"cset":"vset"));sel=null;return render()}
+ if(b.dataset.p){dirty=true;togglePlayer(+b.dataset.p);return render()}
+ if(b.dataset.a){if(locked())return toast(t("locked"));dirty=true;const k=b.dataset.a==="cap"?"c":"v",o=k==="c"?"v":"c";list=list.map((p,i)=>i===sel?{...p,[k]:1,[o]:0}:{...p,[k]:0});toast(t(k==="c"?"cset":"vset"));sel=null;return render()}
  if(b.dataset.i!==undefined){if(locked())return toast(t("locked"));const i=+b.dataset.i;
   if(sel===null)sel=i;else if(sel===i)sel=null;else{const n=[...list];[n[sel],n[i]]=[n[i],n[sel]];
    if(!ok(n)){toast(t("bad"));sel=null;return render()}
-   list=n.map((p,k)=>k>=11?{...p,c:0,v:0}:p);sel=null}
+   list=n.map((p,k)=>k>=11?{...p,c:0,v:0}:p);sel=null;dirty=true}
   render()}
 });
 function tick(){const el=$("count");if(!gw){el.innerHTML="";return}
  const d=Math.max(0,new Date(gw.deadline_time)-Date.now()),f=(n,l)=>`<div>${String(n).padStart(2,"0")}<span>${t(l)}</span></div>`;
  el.innerHTML=f(Math.floor(d/864e5),"d")+f(Math.floor(d/36e5)%24,"h")+f(Math.floor(d/6e4)%60,"m")+f(Math.floor(d/1e3)%60,"s")}
 setInterval(tick,1000);
-sb.auth.onAuthStateChange((_ev,s)=>{const u=s?.user||null;if(u?.id===user?.id){return}user=u;if(user)boot();else{list=[];loaded=false;render()}});
+sb.auth.onAuthStateChange((_ev,s)=>{const u=s?.user||null;if(u?.id===user?.id){return}user=u;if(user)boot();else{list=[];loaded=false;squadId=null;unsub();render()}});
 sb.auth.getSession().then(({data})=>{if(!data.session)render()});
+setInterval(refreshData,300000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&user&&loaded){refreshData();reloadSquad()}});
+if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
 render();
 </script>
 </body>
